@@ -1,0 +1,19 @@
+\begin{table}[t]\centering\small
+\caption{Malicious prover on the real emp-zk backend: each witness of one execution is incremented in turn. A sound protocol rejects the run or reproduces the honest output; ``wrong'' counts accepted runs with a different output.}
+\label{tab:sound}
+\setlength{\tabcolsep}{4pt}
+\begin{tabular}{llrrr}\toprule
+Function & Protocol & Witnesses & Rejected & Wrong\\\midrule
+$\sin x$ & \textsf{Ours} & 14 & 14 & 0\\
+$\ln x$, $n{=}60$ & \textsf{Ours} & 31 & 31 & 0\\
+$\ln x$, $n{=}20$ & \textsf{Ours} & 18 & 18 & 0\\
+$e^{-x}$ & \textsf{Ours} & 8 & 8 & 0\\
+snake$_1$ & \textsf{Ours} & 20 & 20 & 0\\
+softplus & \textsf{Ours} & 29 & 29 & 0\\
+log-softmax$_{10}$ & \textsf{Ours} & 119 & 119 & 0\\
+$\sin x$ & \textsf{Poly} & 44 & 44 & 0\\
+$\ln x$, $n{=}20$ & \textsf{Poly} & 45 & 45 & 0\\
+$\sin x$ & \textsf{Naive} & 279 & 279 & 0\\
+$\ln x$, $n{=}20$ & \textsf{Naive} & 271 & 271 & 0\\
+\bottomrule\end{tabular}
+\end{table}

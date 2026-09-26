@@ -1,0 +1,448 @@
+\documentclass[10pt,twocolumn]{article}
+\usepackage[a4paper,margin=0.72in,columnsep=0.28in]{geometry}
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage{amsmath,amsthm}
+\usepackage{newtxtext,newtxmath}
+\usepackage{microtype}
+\usepackage{booktabs}
+\usepackage{xcolor}
+\usepackage{enumitem}
+\usepackage[numbers,sort&compress]{natbib}
+\usepackage[hidelinks]{hyperref}
+\usepackage[capitalise,noabbrev]{cleveref}
+\usepackage{caption}
+\captionsetup{font=small,labelfont=bf,skip=4pt}
+\setlist{nosep,leftmargin=*}
+
+\newtheorem{proposition}{Proposition}
+\newtheorem{lemma}{Lemma}
+\newtheorem{theorem}{Theorem}
+\theoremstyle{remark}
+\newtheorem*{remark}{Remark}
+
+\newcommand{\F}{\mathbb{F}_p}
+\newcommand{\au}[1]{[#1]}
+\newcommand{\Fzk}{\mathcal{F}_{\mathsf{ZK}}}
+\newcommand{\Flk}{\mathcal{F}^{\mathsf{Lookup}}_{\mathsf{ZK}}}
+\newcommand{\RtoF}{\mathsf{R2F}}
+\newcommand{\FtoR}{\mathsf{F2R}}
+\newcommand{\DD}{\mathsf{DigitDec}}
+\newcommand{\Rng}{\mathsf{Range}}
+\newcommand{\Lk}{\mathsf{Lookup}}
+\newcommand{\CZ}{\mathsf{CheckZero}}
+\newcommand{\Trunc}{\mathsf{Trunc}}
+\newcommand{\PTrunc}{\mathsf{PosTrunc}}
+\newcommand{\Msnzb}{\mathsf{Msnzb}}
+\newcommand{\ulp}{\Delta}
+
+% protocol boxes
+\newcommand{\protobox}[2]{\noindent\fbox{\begin{minipage}{\dimexpr\columnwidth-2\fboxsep-2\fboxrule\relax}\small
+  \centering\textbf{#1}\par\smallskip\raggedright #2\end{minipage}}}
+
+\input{tables/numbers}
+
+\title{\Large\bfseries Sound Zero-Knowledge Proofs for Logarithmic and Periodic\\ Activations in a Lookup-Based Framework}
+\author{Zhi Chen Xiang}
+\date{}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+Lookup tables are the key tool behind the most efficient VOLE-based zero-knowledge (ZK) proofs for
+non-linear functions in machine learning~\cite{hao2024scalable}. A natural way to extend such a
+framework is to reuse its pattern for the exponential: split the input into digits, look up each
+digit, and recombine the results. An earlier master's thesis~\cite{chen2025thesis} sketched a
+logarithm and a sine in this way, which would enable the softplus, log-softmax and snake
+activations, but did not implement them. Implementing them now shows that the template needs care.
+The digit-wise recombination does not compute the logarithm and needs undefined table entries on
+typical inputs, and the sine's range reduction must be bound to the input for the proof to be
+sound. We isolate these two pitfalls and give revised protocols that use only the framework's
+building blocks: a logarithm normalised with $\Msnzb$, and a protocol for periodic functions that performs a
+\emph{verified} reduction modulo one. We prove error bounds of $1$--$1.5$ units in the last place
+($\ulp=2^{-12}$). We implement both protocols in Hao et al.'s released C++ code base (emp-zk). The implementation matches an
+executable specification bit for bit and rejects every tampered witness. For $10^5$ instances, the
+lookup-based protocols are \SpeedMin--\SpeedMax$\times$ faster and use
+\CommMin--\CommMax$\times$ less communication than the same functions proven without lookups in
+the same backend.
+\end{abstract}
+
+% =====================================================================================
+\section{Introduction}
+
+ZK proofs let a model owner prove that an inference was computed correctly without revealing
+the weights. In practice, the non-linear layers are the bottleneck. Hao et al.~\cite{hao2024scalable}
+remove most of this cost with \emph{table lookups} over a VOLE/IT-MAC backend. Inputs are split into
+12-bit digits with a verified digit decomposition, and each digit indexes a small public table.
+Their framework covers ReLU, sigmoid, GELU, softmax and normalisation, and reports
+50--179$\times$ speed-ups over Mystique~\cite{weng2021mystique}.
+
+The author's master's thesis~\cite{chen2025thesis} (``v1'' below) proposed extending the framework
+with a logarithm $\Pi_{\log}$ and a sine $\Pi_{\sin}$. These are needed for softplus, log-softmax
+and the periodic snake activation~\cite{ziyin2020snake}, which is used in neural audio
+codecs~\cite{kumar2023dac}. Both protocols follow the template of the exponential $\Pi_{\exp}$: a
+digit decomposition, one lookup per digit, and a cheap recombination. The thesis presented them as
+paper designs, without an implementation to check them against.
+
+\paragraph{This paper.} We implement both protocols and check them in code. This shows that the
+template does not carry over directly, and we revise the designs accordingly.
+\begin{enumerate}
+\item \textbf{Two pitfalls} (\cref{sec:pitfalls}). (i) Digit-wise lookups only compose through a
+homomorphism: $e^{-\sum c_i}=\prod e^{-c_i}$, but $\log\sum c_i\neq\sum\log c_i$. The v1 logarithm
+outputs $\log\prod_i c_i$, and it needs the undefined entry $\log 0$ for every input below
+$2^{36}$. (ii) A committed intermediate that no constraint ties to the input makes a protocol
+unsound. v1's sine does not yet tie the reduced angle $x_{\bmod}$ to the input, so a malicious
+prover can have any table output accepted.
+\item \textbf{Sound constructions} (\cref{sec:constructions}). $\Pi_{\mathsf{Per}}$ evaluates any
+1-periodic function in \emph{turns}. The reduction mod~1 is exactly a digit decomposition, so it is
+verified at no extra cost, and one $2^{12}$-row table with first-order interpolation reaches
+$\approx\!1\ulp$. $\Pi_{\log}$ normalises multiplicatively with $\Msnzb$, as Hao's division does,
+and reaches $1.5\ulp$ over $(0,2^{60})$. Both come with error bounds and a security argument in the
+same hybrid model as~\cite{hao2024scalable}. We specialise them to snake, softplus and log-softmax.
+\item \textbf{Implementation and evaluation} (\cref{sec:impl,sec:eval}). We add the protocols to
+Hao et al.'s released C++ code (ZKMath on emp-zk~\cite{emptoolkit}). A pure-Python executable
+specification comes with an adversarial prover, and the C++ output matches it bit for bit. On the
+real backend, every tampered witness is rejected. The benchmarks follow Hao et al.'s methodology:
+$10^3$--$10^5$ instances and 200\,Mbps--1\,Gbps links. We compare against the same functions
+proven \emph{without} lookups in the same backend, and against plaintext.
+\end{enumerate}
+
+\paragraph{What is (not) new.} Evaluating $\log$ or $\sin$ through lookups is not new in itself.
+zkLLM's \textsf{tlookup} handles arbitrary element-wise functions and uses a logarithm inside
+zkAttn~\cite{sun2024zkllm}. Lookup-based non-linearities are standard in SNARK-based
+zkML~\cite{kang2022scaling}. Normalisation plus table lookup is the usual approach in secure
+computation~\cite{rathee2021sirnn,aly2019benchmarking}. SwiGLU is directly expressible in
+Hao et al.'s framework and in zkLLM. Our contribution is to identify the pitfalls, to give sound
+and precise instantiations \emph{inside} the digit-decomposition framework together with their
+proofs, and to provide an open, reproducible implementation and benchmark.
+
+% =====================================================================================
+\section{Background}\label{sec:bg}
+
+\paragraph{Fixed point.} We use Hao et al.'s parameters: $p=2^{61}-1$ and $s=12$ fractional bits. A
+real $\hat x$ is encoded as $x=\RtoF(\hat x)=\lfloor\hat x\cdot2^s\rceil\bmod p$, and decoded as
+$\hat x=\FtoR(x)=x/2^s$, with $x$ read as a signed integer in $(-p/2,p/2)$. Errors are stated in
+units of $\ulp=2^{-s}\approx2.44\cdot10^{-4}$. Public table entries are rounded to nearest
+(error $\le\ulp/2$).
+
+\paragraph{VOLE-based ZK.} The prover $P$ commits to values as IT-MACs $\au{x}$. Linear operations
+with public constants are free. A multiplication $\au{x}\au{y}$ costs one committed value and is
+checked in batches as in QuickSilver~\cite{yang2021quicksilver}. $\CZ$ opens a zero-test. We work in
+the $(\Fzk,\Flk)$-hybrid model of~\cite{hao2024scalable}. $\Lk(L,\au{x},\au{\vec y})$ checks that
+$(x,\vec y)$ is a row of a public table $L$, and $\Rng(d,\au{x})$ checks that $x\in[0,2^d)$. Both are
+realised with a ZK read-only memory~\cite{franzese2021ram}. $N$ lookups into a $T$-row table cost
+$2N+T$ multiplications, i.e.\ about two per lookup, plus one committed version per read.
+
+\paragraph{Building blocks~\cite{hao2024scalable}.}
+$\DD(\au{x};d_0,\dots,d_{k-1})$ commits digits $x_i$, range-checks each of them (digits of up to
+12 bits use one lookup), and runs $\CZ(\sum_i2^{\sigma_i}x_i-x)$ with $\sigma_i=\sum_{j<i}d_j$.
+Because $\sum d_i\le60<\log p$, an accepted decomposition is unique and proves $x<2^{\sum d_i}$.
+$\PTrunc(\au{x},t)$ is the high digit of $\DD(\au{x};t,n-t)$, optionally after adding $2^{t-1}$
+for rounding. We compute a signed truncation for $|x|<2^L$ as $\PTrunc(x+2^L,t)-2^{L-t}$, which
+costs one $\DD$. $\Msnzb$ proves $2^k\le x<2^{k+1}$: $P$ commits $k$ and the row $(k,2^k,\dots)$ of
+a public table, and $V$ range-checks $x-2^k$ and $2^{k+1}-1-x$ on $n$ bits. For $x<2^n$ this is
+equivalent to Hao et al.'s comparisons. The exponential $\Pi_{\exp}$
+computes $e^{-\hat x}$ from $\DD(\au{x};12,12,\dots)$ with one table per digit,
+$L_i=\{v\mapsto e^{-2^{\sigma_i}v/2^s}\}$, and multiplies the looked-up factors with truncation.
+
+% =====================================================================================
+\section{Two pitfalls}\label{sec:pitfalls}
+
+\subsection{Digit-wise lookups need a homomorphism}
+$\Pi_{\exp}$ is correct because the digits of $x$ split its value additively,
+$\hat x=\sum_i c_i$ with $c_i=2^{\sigma_i}\hat x_i$, and the exponential maps sums to products.
+v1's $\Pi_{\log}$~\cite[Fig.~4.1]{chen2025thesis} copies the structure. It looks up
+$y_i=\RtoF(\log c_i)$ in per-digit tables and outputs $\sum_i y_i$, justified by
+``the logarithm of a product is the sum of the logarithms''. The digits, however, combine as a sum.
+
+\begin{proposition}\label{prop:log}
+With exact tables, v1's $\Pi_{\log}$ outputs $\log\prod_ic_i$ instead of $\log\hat x=\log\sum_ic_i$,
+an error of $\log(\prod_ic_i/\sum_ic_i)$ whose size and sign depend on the input. The table entry
+for a zero digit would be $\log 0$ and does not exist, so every input with a zero digit makes the
+honest prover abort. Hence, for $k\ge2$ digits, the protocol returns $\ln\hat x$ only by coincidence.
+With Hao et al.'s 12-bit digits ($k=5$ for $x<2^{60}$), every $x<2^{48}$, i.e.\ every
+$\hat x<2^{36}$, has a zero top digit and aborts.
+\end{proposition}
+For example, $x=2^{50}+2^{40}+3\cdot2^{24}+5\cdot2^{12}+7$ has five non-zero digits. v1 outputs
+\VOneLogExOut\ while $\ln\hat x=\VOneLogExTrue$. Every probability, every softmax denominator
+in $[1,n]$ and every softplus argument in $[1,2]$ lies far below $2^{36}$, so the honest prover
+cannot complete the protocol on the inputs it was designed for (last column of \cref{tab:prec}).
+The thesis text also writes ``$k=12$'', which is the digit size $d$ rather than the number of
+digits $k$.
+
+\subsection{Every witness must be pinned to the input}
+v1's $\Pi_{\sin}$~\cite[Fig.~4.2]{chen2025thesis} works as follows. $P$ computes
+$x_{\bmod}=\hat x-2\pi\lfloor\hat x/2\pi\rfloor$ locally and commits $\au{x_{\bmod}}$. It then commits
+$y=\RtoF(T_5(x_{\bmod}))$ with the Taylor polynomial $T_5(t)=t-t^3/6+t^5/120$, and the parties
+run $\Lk(L,\au{x_{\bmod}},\au{y})$.
+
+\begin{proposition}\label{prop:sin}
+v1's $\Pi_{\sin}$ is not sound. For every input $\au{x}$ and every row $(t,y)$ of $L$, the prover
+that commits $x_{\bmod}=t$ is accepted with output $y$.
+\end{proposition}
+\begin{proof}
+$\au{x}$ does not appear in any check. The only check involving $x_{\bmod}$ is the lookup, which
+passes for every row.
+\end{proof}
+Our test suite runs this attack against a literal implementation of v1 and obtains an accepted
+proof of $\sin(0)=1.0044$. Running the honest protocol also shows larger error margins than the
+thesis estimated. On the protocol's domain $[0,2\pi)$, $T_5$ is off by up to \VOneSinErr\ at
+$t\to2\pi^-$, and the degree-7 polynomial that the thesis suggests for a full cycle still errs by
+30.2 there. Negative inputs wrap to $x_{\bmod}\approx2\pi$, so $\hat x\in[-1,0)$ already gives errors
+of 46. Moreover, a lookup-based protocol does not need a Taylor polynomial at all: the table is
+public, so it can store $\sin$ itself. The real difficulty is the \emph{verified} range reduction.
+It cannot be exact modulo $2\pi$, because $2\pi$ is irrational and a fixed-point constant drifts by
+$q\cdot|C2^{-s}-2\pi|$ after $q$ periods.
+
+\paragraph{Lessons.} (L1) Every committed value must be a function of the inputs, fixed by $\CZ$,
+range and lookup relations. The soundness proofs in the hybrid model, including all of Hao et al.'s,
+rely on this \emph{witness uniqueness}. (L2) A digit-wise lookup recombines
+correctly only if $f(\sum_ic_i)=\bigodot_if(c_i)$ for a cheap operation $\bigodot$. This holds for
+$\exp$ with $\bigodot=\times$. It also holds for periodic functions whose period, in fixed-point
+units, is a power of two: the digits above the period contribute whole periods and drop out. For
+$\log$ one needs a multiplicative decomposition, i.e.\ normalisation.
+
+% =====================================================================================
+\section{Sound constructions}\label{sec:constructions}
+
+\begin{figure}[t]
+\protobox{Protocol $\Pi_{\mathsf{Per}}[g]$ (1-periodic $g$, e.g.\ $\sin2\pi\tau$, $\sin^22\pi\tau$)}{%
+\textbf{Parameters:} $b=12$; table $L_g=\{(i,\RtoF(g(i2^{-b})),\RtoF(g'(i2^{-b})))\}_{i<2^b}$.\\
+\textbf{Input:} $\au{u}$ with $|u|<2^{58}$, read as $\tau=u/2^F$, $b\le F\le48$.
+\begin{enumerate}
+\item $\au{u'}=\au{u}+2^{58}$. Since $2^F\mid2^{58}$, $\mathrm{frac}(u'/2^F)=\mathrm{frac}(\tau)$.
+\item $(\au{\delta},\au{i},\au{h})\leftarrow\DD(\au{u'};F-b,\,b,\,59-F)$. This is the verified
+  reduction mod 1: $\mathrm{frac}(\tau)=i2^{-b}+\delta2^{-F}$; the top digit proves $|u|<2^{58}$.
+\item $P$ commits $\au{g_0},\au{g_1}$; $\Lk(L_g,\au{i},\au{g_0},\au{g_1})$.
+\item $\au{y}=\au{g_0}+\Trunc(\au{g_1}\cdot\au{\delta},\,F)$ (first-order interpolation).
+\end{enumerate}}
+\caption{Evaluation of periodic functions in turns.}\label{fig:per}
+\end{figure}
+
+\begin{figure}[t]
+\protobox{Protocol $\Pi_{\log}$}{%
+\textbf{Parameters:} $n\le60$, $m=12$; tables $K=\{(k,2^k,2^{n-1-k},\RtoF((k-s)\ln2))\}_{k<n}$ and
+$M=\{(z_1,\RtoF(\ln(z_12^{-m})),\RtoF(2^m/z_1))\}_{2^m\le z_1<2^{m+1}}$.\\
+\textbf{Input:} $\au{x}$ with $x\in(0,2^n)$; output $\approx\ln\hat x$.
+\begin{enumerate}
+\item ($\Msnzb$) $P$ commits $\au{k},\au{e},\au{q},\au{c}$; $\Lk(K,\au{k},\au{e},\au{q},\au{c})$;
+  $\Rng(n,\au{x}-\au{e})$; $\Rng(n,2\au{e}-1-\au{x})$.
+\item $\au{z}=\au{x}\cdot\au{q}$, so $z\in[2^{n-1},2^n)$ (multiplicative normalisation).
+\item $(\au{z_0},\au{z_1})\leftarrow\DD(\au{z};n-1-m,\,m+1)$; $P$ commits $\au{a},\au{b}$;
+  $\Lk(M,\au{z_1},\au{a},\au{b})$.
+\item $\au{y}=\au{c}+\au{a}+\PTrunc_{\mathrm{round}}(\au{b}\cdot\au{z_0},\,n-1)$.
+\end{enumerate}}
+\caption{Logarithm via normalisation (cf.\ Hao et al.'s $\Pi_{\mathsf{Div}}$).}\label{fig:log}
+\end{figure}
+
+\input{tables/precision}
+
+\subsection{Periodic functions in turns}
+We parametrise periodic functions by \emph{turns}. We write $\sin(a\hat x)=\sin(2\pi\tau)$ with
+$\tau=a\hat x/2\pi$, and fold the constant $a/2\pi$ into a public multiplier. For snake, $a$ is a
+trained weight, so the constant can be folded in at training time. Concretely,
+$u=x\cdot A$ with $A=\mathrm{round}(a2^{s_a}/2\pi)$ is a local operation and gives
+$\tau=u/2^{s+s_a}$. The reduction mod 1 is then the low $F$ bits of $u$, which is exactly what $\DD$
+extracts. \Cref{fig:per} gives the protocol.
+
+\begin{lemma}\label{lem:per}
+For $g\in C^2$ with period 1, $\Pi_{\mathsf{Per}}$ outputs $y$ with
+$|\FtoR(y)-g(\tau)|\le\ulp+2^{-s-1-b}+\tfrac12\max|g''|\,2^{-2b}$.
+For $g=\sin2\pi\tau$ and $b=12$ this is $1.005\ulp$. The conversion from radians adds at most
+$2\pi|\hat x|\,|A2^{-s_a}-a/2\pi|\le2\pi|\hat x|2^{-s_a-1}$, which is $1.9\cdot10^{-7}$ for
+$|\hat x|<4096$ and $s_a=36$.
+\end{lemma}
+\begin{proof}
+Write $\tau_i=i2^{-b}$ and $\hat\delta=\delta2^{-F}\in[0,2^{-b})$. The table entries carry errors
+$|e_0|,|e_1|\le\ulp/2$, and the rounded truncation adds $\ulp/2$. The term $e_1\hat\delta$ is
+below $2^{-s-1-b}$. The Taylor remainder of $g(\tau_i+\hat\delta)$ around $\tau_i$ is at most
+$\max|g''|\hat\delta^2/2$.
+\end{proof}
+\noindent\emph{Cost:} one lookup into a $2^{12}$-row table, one multiplication, and the range
+lookups of two $\DD$s (59 and $F+5$ bits; 10 range lookups for $F=48$, see \cref{tab:prec}).
+Snake, $\mathrm{snake}_a(x)=x+\sin^2(ax)/a$, tabulates $g=\sin^2(2\pi\tau)$ directly, so no
+squaring is needed, and then multiplies by $1/a$ (a 24-bit constant) followed by one truncation.
+We treat $a$ as public: it is fixed per channel after training. If $a$ must stay private, $a/2\pi$
+and $1/a$ are committed as model parameters, which costs one extra multiplication per activation.
+
+\subsection{Logarithm via normalisation}
+\Cref{fig:log} normalises exactly like the first steps of Hao et al.'s division. $\Msnzb$ gives $k$
+with $2^k\le x<2^{k+1}$, and multiplying by the looked-up $2^{n-1-k}$ yields
+$\hat z=z/2^{n-1}\in[1,2)$ with $\ln\hat x=(k-s)\ln2+\ln\hat z$. The top $m+1$ bits $z_1$ of $z$
+index the mantissa table, and the remainder $r=z_0/2^{n-1}<2^{-m}$ is handled by
+$\ln(\hat z_1+r)=\ln\hat z_1+r/\hat z_1-\theta$, where $0\le\theta\le2^{-2m-1}$.
+
+\begin{lemma}\label{lem:log}
+For every $x\in(0,2^n)$, $|\FtoR(y)-\ln\hat x|\le\tfrac32\ulp+2^{-2m-1}+2^{-m-s-1}$, which is
+$3.66\cdot10^{-4}$ ($1.5\ulp$) for $m=12$.
+\end{lemma}
+\begin{proof}
+The entries $c$ and $a$ and the rounding of $\PTrunc$ each contribute at most $\ulp/2$. The error
+$e_b$ of $b$ enters as $r\,e_b\le2^{-m-s-1}$, and the linearisation contributes $\theta$.
+\end{proof}
+\noindent\emph{Cost:} 2 lookups (into $n$- and $2^{12}$-row tables), 2 multiplications, and
+$2\lceil n/12\rceil$ range checks for $\Msnzb$ plus those of two $\DD$s: 22 range checks for
+$n=60$ and 10 for $n=20$, two of them single-bit (\cref{tab:prec}). $M$ contains no row with $z_1<2^m$, so the lookup
+itself enforces the normalisation. The protocol aborts on $x\le0$ and $x\ge2^n$.
+
+\subsection{Activations}
+\textbf{Softplus.} We compute $\mathrm{softplus}(x)=\mathrm{ReLU}(x)+\ln(1+e^{-|x|})$. A
+sign/absolute-value step costs one bit, one multiplication and one range check. $\Pi_{\exp}$ then
+evaluates $e^{-|x|}$, and $\Pi_{\log}$ runs with $n=s+2$ because the argument lies in $[1,2]$.
+\textbf{Log-softmax.} We compute $y_j=(x_j-m)-\ln\sum_ke^{x_k-m}$, where $m$ comes from Hao et al.'s
+max (range checks plus $\prod_j(m-x_j)=0$). The sum lies in $[1,n]$, so $\Pi_{\log}$ runs on
+$s+\lceil\log_2n\rceil+1$ bits, and no division is needed, unlike softmax.
+\textbf{Snake:} see above. Swish, GLU and SwiGLU need only Hao et al.'s sigmoid and a
+multiplication, and are not claimed here.
+
+\subsection{Security}
+We define the ideal functionality $\mathcal{F}^{+}_{\mathsf{Math}}$ as Hao et al.'s
+$\mathcal{F}_{\mathsf{Math}}$ extended with commands $\mathsf{Log}$, $\mathsf{Per}_g$, $\mathsf{Snake}$,
+$\mathsf{Softplus}$ and $\mathsf{LogSoftmax}$. Each command outputs the deterministic fixed-point
+function computed by the honest protocol, just as~\cite{hao2024scalable} defines
+$\mathsf{PtExp}$, and aborts outside the domain. Lemmas~\ref{lem:per} and~\ref{lem:log} then bound
+the distance to the real functions.
+
+\begin{theorem}
+$\Pi_{\mathsf{Per}}$, $\Pi_{\log}$ and the activation protocols UC-realise~\cite{canetti2001uc}
+$\mathcal{F}^{+}_{\mathsf{Math}}$ in the $(\Fzk,\Flk)$-hybrid model against a static, malicious
+adversary.
+\end{theorem}
+\begin{proof}[Proof sketch]
+\emph{Corrupted verifier:} $V$ receives only accept/abort bits from the hybrid functionalities and
+never an opened value, so the simulator runs $V$ on dummy inputs. \emph{Corrupted prover:} the
+simulator extracts every committed witness from the $\mathsf{Input}$ calls and replays the checks.
+If all checks pass, the witnesses are the honest ones (L1). The digits of each $\DD$ are unique
+because $\sum d_i\le60<\log p$. $\Msnzb$'s range checks fix $k$. Every table is a function of its
+key column. Products and linear combinations are determined. Hence the output equals the ideal
+output, and the simulator sends the extracted input to $\mathcal{F}^{+}_{\mathsf{Math}}$. The
+structure follows the proofs in~\cite[App.~B]{hao2024scalable}. We cross-validate the argument
+empirically in \cref{sec:impl}.
+\end{proof}
+
+\input{tables/main}
+
+% =====================================================================================
+\section{Implementation}\label{sec:impl}
+
+\paragraph{C++ on ZKMath.} We extend Hao et al.'s released code (ZKMath, commit
+\texttt{b4f03cd}) on emp-zk. The emp-tool/-ot/-zk commits are pinned to December 2024, when ZKMath
+was published, and everything builds in a container. Apart from adding our files, the only change to
+the original code is the build type: ZKMath's CMake file forces an unoptimised debug build, and we
+build everything with \texttt{-O3}. Our extension (\ExtLines\ lines of C++) adds a multi-column
+zk-ROM table. Unlike
+ZKMath's tables, whose permutation-check challenges come from a fixed PRG key (acceptable for
+benchmarking, not for deployment), our tables obtain the challenges from the verifier, at the cost of
+one extra round trip per $10^5$ reads. The extension also adds a batched QuickSilver degree-2 check
+for bits, which commits no product, and the protocols of \cref{sec:constructions} together with the
+baselines of \cref{sec:eval}.
+
+\paragraph{Executable specification.} A pure-Python simulation of the protocols in the
+$(\Fzk,\Flk)$-hybrid model serves as the specification. It contains an adaptive malicious prover
+that shifts single witnesses, mounts carry attacks on adjacent digits, and tampers with random
+pairs of witnesses. Each accepted run must return the honest output. A mutation test confirms that
+this fuzzer does find accepted wrong outputs once any single check is disabled.
+
+\paragraph{Cross-validation.} (i) For every function, the C++ protocol run on the real VOLE
+backend outputs \emph{exactly} the field elements of the Python specification (\CrossN\ outputs, 0
+mismatches). (ii) Malicious prover on the real backend: for each witness $k$ of an execution, the
+prover adds 1 to witness $k$. \Cref{tab:sound} shows that all \SoundTotal\ such runs are
+rejected, including those against the baselines.
+
+\input{tables/soundness}
+
+% =====================================================================================
+\section{Evaluation}\label{sec:eval}
+
+\paragraph{Setup.} \Setup\ Following~\cite{hao2024scalable}, both parties run single-threaded on
+one machine, and the loopback link is shaped to 200\,Mbps, 500\,Mbps and 1\,Gbps. $10^5$ instances
+is the default, and the parameters are $p=2^{61}-1$, $s=12$ and 12-bit digits. Our times cover the
+whole proof \emph{including} every verifier check: lookup permutations, multiplication triples,
+$\CZ$ and degree-2 checks. Communication is the total over both directions.
+
+\paragraph{Baselines.} \textsf{Ours} uses lookups for range checks and for function evaluation.
+\textsf{Poly} keeps Hao et al.'s lookup-based building blocks, including $\Msnzb$'s table indexed by
+the exponent, but replaces every \emph{function} table by the smallest-degree polynomial with error
+below $\ulp/8$ (odd degree~7 for
+$\sin2\pi t$ on $[0,\frac14]$ after folding into the first quadrant, degree~5 for $\ln(1+t)$, and
+degree~4 for $2^{-f}$ with $e^{-x}=2^{-k-f}$), evaluated by Horner's rule at scale $2^{-20}$.
+\textsf{Naive} additionally replaces every lookup-based range check by a bit decomposition with
+QuickSilver booleanity checks, and $\Msnzb$ by a prefix-OR over the bits (one multiplication per
+bit). It is the ``no table lookup'' version of the same protocols: the
+same verified reductions in the same backend, with every lookup removed. The polynomial baselines
+are slightly \emph{more} precise than ours (\cref{tab:prec}), so the comparison does not favour
+lookups. \textsf{Plain} is the floating-point function in C++.
+
+\paragraph{Calibration.} We re-ran Hao et al.'s own binaries (\cref{tab:hao}). The communication in
+both directions matches their published numbers within \HaoCommDev\ for division, sigmoid and
+softmax, and for their building blocks: PosTrunc uses 15.57\,MB and Msnzb 49.59\,MB, against 15.571
+and 49.586\,MB in their Table~2. The released exponential takes 16-bit inputs, so it uses less
+communication than published. The released GELU uses \HaoGeluDev\ more, and we did not investigate
+the difference. Our absolute runtimes are \HaoTimeFactor\ lower than the published ones at the same
+bandwidth, because of a newer CPU and \texttt{-O3}. We therefore only compare protocols run in the
+same setup.
+
+\input{tables/hao}
+
+\paragraph{Results.} \Cref{tab:main} gives the results in the format of Hao et al.'s Tables 4--5.
+Lookups make the new math functions and activations \SpeedMin--\SpeedMax$\times$ faster than
+\textsf{Naive} and use \CommMin--\CommMax$\times$ less communication. Most of the gain already comes
+from lookup-based range checks (\textsf{Poly} vs.\ \textsf{Naive}). A 12-bit range check by lookup
+costs four committed values (the digit, its version and two permutation-check products), while a
+bit decomposition costs twelve. The function tables add a further
+\PolySpeedMin--\PolySpeedMax$\times$: they replace Horner steps whose truncations each need a
+40-bit decomposition. At these bandwidths all protocols are communication-bound, so the speed-up
+closely follows the communication ratio. Only at 1\,Gbps does computation start to matter, and the
+gap grows slightly (for $\sin$, from \SinGapLow$\times$ at 200\,Mbps to \SinGapHigh$\times$ at 1\,Gbps). With
+lookups, a proof costs \OverMin--\OverMax\,$\mu$s per instance at 500\,Mbps, compared with
+\PlainMin--\PlainMax\,ns for the plaintext function. The costs scale linearly with the number of instances, and
+the lookup advantage is already present at $10^3$ instances, where the fixed cost of checking the
+$2^{12}$-row tables is still visible (\cref{tab:scaling}).
+
+\paragraph{Why not 50--179$\times$?} Hao et al.\ compare against Mystique, which converts
+arithmetic values to Boolean ones and evaluates IEEE-754 circuits. We instead compare against the
+strongest simple arithmetic alternative in the \emph{same} VOLE backend. The resulting factors of
+\SpeedMin--\SpeedMax$\times$ isolate what the lookup technique itself contributes to the new
+functions. They should not be read as a comparison with other systems.
+
+\input{tables/scaling}
+
+\paragraph{Limitations.} Everything runs in the fixed-point model of~\cite{hao2024scalable}
+($s=12$), and our errors are quantisation-limited at $1$--$1.5\ulp$. Accuracy-critical uses need a
+larger $s$ and larger tables. The proofs are for the protocols in the hybrid model. The C++ code is a
+research prototype built on an older emp-zk. We benchmark activation layers, not end-to-end
+networks.
+
+% =====================================================================================
+\section{Related work}
+Hao et al.~\cite{hao2024scalable} is the framework we build on. Mystique~\cite{weng2021mystique},
+Hao et al.'s baseline, provides arithmetic--Boolean conversions and evaluates floating-point
+functions with Boolean circuits. zkLLM~\cite{sun2024zkllm} proves arbitrary element-wise functions
+with \textsf{tlookup} on GPUs, and its attention protocol zkAttn uses a logarithm. Lu et
+al.~\cite{lu2024extensible} reduce non-linear layers to range and exponent relations. zkCNN
+covers ReLU and max-pooling~\cite{liu2021zkcnn}. SNARK-based zkML uses lookup
+tables~\cite{kang2022scaling}, and Sridhar et al.\ give low-depth provable approximations of
+non-polynomial functions~\cite{sridhar2025provable}. In MPC, SIRNN combines digit-wise lookups
+for $\exp$ with normalisation and lookups for reciprocal square roots~\cite{rathee2021sirnn}, and
+Aly and Smart benchmark scientific functions such as $\sin$ and $\log$ built from range reduction
+and polynomials~\cite{aly2019benchmarking}. The VOLE-based ZK backends we use
+are surveyed in~\cite{baum2023sok}. We add sound, precise instantiations of $\log$ and periodic
+functions \emph{within} a digit-decomposition framework, together with a reusable account of the
+pitfalls of the direct instantiations.
+
+\section{Conclusion}
+Reusing a digit-wise lookup template for new functions is attractive, but some details are easy to
+miss on paper and only show up in an implementation. The template is sound only if every witness is
+pinned to the input, and correct only if the recombination is a homomorphism of the function.
+Following these two rules gives a logarithm and a periodic-function protocol at 1--1.5 units in the
+last place, for 1--2 lookups each, and makes softplus, log-softmax
+and snake available in Hao et al.'s framework at \SpeedMin--\SpeedMax$\times$ lower cost than
+without lookups. Code, specification, tests and benchmark scripts are released with this paper.
+
+{\small
+\bibliographystyle{plainnat}
+\bibliography{refs}
+}
+
+\end{document}

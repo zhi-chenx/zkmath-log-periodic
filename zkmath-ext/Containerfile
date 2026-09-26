@@ -1,0 +1,24 @@
+# Reproducible build of Hao et al.'s ZKMath (USENIX Sec '24) + our extension (ΠLog, ΠSin, ...).
+# emp-* are pinned to the commits that were current when ZKMath was published (Dec 2024);
+# emp-toolkit's 2026 main branches changed the API and do not build ZKMath.
+FROM docker.io/library/debian:12
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        build-essential cmake git ca-certificates libssl-dev python3 iproute2 time \
+    && rm -rf /var/lib/apt/lists/*
+
+ARG EMP_TOOL=88f722f64e7ccb2546afe8b4d7a3f043ed2f6b42
+ARG EMP_OT=0342af547fa80477e866c56b5e2632315ae51721
+ARG EMP_ZK=4a0d717f5e3d18b408db422b845ccb18e24a853b
+ARG ZKMATH=b4f03cd7e61822c0f01d0783314e06f93cb8872d
+
+WORKDIR /opt
+RUN git clone https://github.com/emp-toolkit/emp-tool.git && cd emp-tool && git checkout $EMP_TOOL \
+    && cmake . -DCMAKE_BUILD_TYPE=Release && make -j"$(nproc)" && make install
+RUN git clone https://github.com/emp-toolkit/emp-ot.git && cd emp-ot && git checkout $EMP_OT \
+    && cmake . -DCMAKE_BUILD_TYPE=Release && make -j"$(nproc)" && make install
+# emp-zk is not installed: ZKMath is compiled into the emp-zk library itself (see build.sh).
+RUN git clone https://github.com/emp-toolkit/emp-zk.git && cd emp-zk && git checkout $EMP_ZK
+RUN git clone https://github.com/CryptMatrix/ZKMath.git && cd ZKMath && git checkout $ZKMATH
+
+WORKDIR /work

@@ -1,0 +1,14 @@
+\begin{table}[t]\centering\footnotesize
+\caption{Accuracy in units of $\Delta=2^{-12}$ over $10^5$ random inputs (max\,/\,mean absolute error); cost per instance of \textsf{Ours} (function lookups\,+\,range checks\,/\,multiplications; log-softmax per element); and the v1 protocols~\cite{chen2025thesis} with an honest prover (max error or share of aborted runs).}
+\label{tab:prec}
+\setlength{\tabcolsep}{2.5pt}
+\begin{tabular}{lcccl}\toprule
+Function & \textsf{Ours} & \textsf{Naive} & Cost & v1 \\\midrule
+$\sin x$ & 1.00\,/\,0.33 & 0.53\,/\,0.25 & 1+10\,/\,1 & err 46\\
+$\ln x$, $n{=}60$ & 1.49\,/\,0.40 & 1.03\,/\,0.33 & 2+22\,/\,2 & err 49; abort 79\%\\
+$\ln x$, $n{=}20$ & 1.46\,/\,0.36 & 1.01\,/\,0.30 & 2+10\,/\,2 & abort 100\%\\
+snake$_1$ & 1.00\,/\,0.33 & 0.54\,/\,0.25 & 1+14\,/\,1 & err $\le$\,2166\\
+softplus & 1.19\,/\,0.18 & 0.98\,/\,0.15 & 4+18\,/\,4 & abort 100\%\\
+log-softmax$_{10}$ & 3.82\,/\,0.54 & 2.99\,/\,0.46 & 2.2+8\,/\,2.1 & abort 100\%\\
+\bottomrule\end{tabular}
+\end{table}

@@ -1,0 +1,11 @@
+SOUNDNESS mode=lut func=sin witnesses=14 rejected=14 accepted_same_output=0 accepted_wrong_output=0
+SOUNDNESS mode=lut func=log60 witnesses=31 rejected=31 accepted_same_output=0 accepted_wrong_output=0
+SOUNDNESS mode=lut func=log20 witnesses=18 rejected=18 accepted_same_output=0 accepted_wrong_output=0
+SOUNDNESS mode=lut func=exp witnesses=8 rejected=8 accepted_same_output=0 accepted_wrong_output=0
+SOUNDNESS mode=lut func=snake witnesses=20 rejected=20 accepted_same_output=0 accepted_wrong_output=0
+SOUNDNESS mode=lut func=softplus witnesses=29 rejected=29 accepted_same_output=0 accepted_wrong_output=0
+SOUNDNESS mode=lut func=logsoftmax witnesses=119 rejected=119 accepted_same_output=0 accepted_wrong_output=0
+SOUNDNESS mode=poly func=sin witnesses=44 rejected=44 accepted_same_output=0 accepted_wrong_output=0
+SOUNDNESS mode=poly func=log20 witnesses=45 rejected=45 accepted_same_output=0 accepted_wrong_output=0
+SOUNDNESS mode=naive func=sin witnesses=279 rejected=279 accepted_same_output=0 accepted_wrong_output=0
+SOUNDNESS mode=naive func=log20 witnesses=271 rejected=271 accepted_same_output=0 accepted_wrong_output=0

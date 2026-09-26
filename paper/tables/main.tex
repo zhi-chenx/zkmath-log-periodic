@@ -1,0 +1,37 @@
+\begin{table*}[t]\centering\small
+\caption{Runtime (s) and communication (MB) for $10^5$ instances (log-softmax: $10^5$ rows of 10), in the format of Hao et al.'s Tables 4--5. Speed-ups of \textsf{Ours} over the baseline in parentheses. \textsf{Plain}: floating-point evaluation without proof.}
+\label{tab:main}
+\begin{tabular}{llrrrrr}\toprule
+Function & Protocol & 200\,Mbps & 500\,Mbps & 1\,Gbps & Comm.\ (MB) & Elem./inst.\\\midrule
+$\sin x$ & \textsf{Ours} & 1.610 & 0.663 & 0.350 & 37.2 & 49\\
+ & \textsf{Poly} & 4.758 (3.0$\times$) & 2.144 (3.2$\times$) & 1.325 (3.8$\times$) & 108.2 (2.9$\times$) & 142\\
+ & \textsf{Naive} & 9.777 (6.1$\times$) & 4.313 (6.5$\times$) & 2.627 (7.5$\times$) & 222.5 (6.0$\times$) & 292\\
+ & \textsf{Plain} & \multicolumn{3}{c}{1.64 ms} & -- & --\\
+\midrule
+$\ln x$, $n{=}60$ & \textsf{Ours} & 3.522 & 1.629 & 1.053 & 79.3 & 104\\
+ & \textsf{Poly} & 6.190 (1.8$\times$) & 2.647 (1.6$\times$) & 1.515 (1.4$\times$) & 142.3 (1.8$\times$) & 187\\
+ & \textsf{Naive} & 14.48 (4.1$\times$) & 6.461 (4.0$\times$) & 3.939 (3.7$\times$) & 326.8 (4.1$\times$) & 428\\
+ & \textsf{Plain} & \multicolumn{3}{c}{0.84 ms} & -- & --\\
+\midrule
+$\ln x$, $n{=}20$ & \textsf{Ours} & 1.671 & 0.760 & 0.467 & 38.5 & 50\\
+ & \textsf{Poly} & 4.834 (2.9$\times$) & 2.092 (2.8$\times$) & 1.219 (2.6$\times$) & 110.4 (2.9$\times$) & 145\\
+ & \textsf{Naive} & 10.13 (6.1$\times$) & 4.500 (5.9$\times$) & 2.679 (5.7$\times$) & 230.2 (6.0$\times$) & 302\\
+ & \textsf{Plain} & \multicolumn{3}{c}{1.25 ms} & -- & --\\
+\midrule
+snake$_1$ & \textsf{Ours} & 2.199 & 0.904 & 0.471 & 51.1 & 67\\
+ & \textsf{Poly} & 5.984 (2.7$\times$) & 2.654 (2.9$\times$) & 1.577 (3.4$\times$) & 136.8 (2.7$\times$) & 179\\
+ & \textsf{Naive} & 12.70 (5.8$\times$) & 5.631 (6.2$\times$) & 3.364 (7.2$\times$) & 288.4 (5.6$\times$) & 378\\
+ & \textsf{Plain} & \multicolumn{3}{c}{2.85 ms} & -- & --\\
+\midrule
+softplus & \textsf{Ours} & 2.813 & 1.241 & 0.731 & 64.9 & 85\\
+ & \textsf{Poly} & 9.598 (3.4$\times$) & 4.258 (3.4$\times$) & 2.547 (3.5$\times$) & 219.2 (3.4$\times$) & 287\\
+ & \textsf{Naive} & 19.64 (7.0$\times$) & 8.670 (7.0$\times$) & 5.201 (7.1$\times$) & 446.1 (6.9$\times$) & 585\\
+ & \textsf{Plain} & \multicolumn{3}{c}{2.78 ms} & -- & --\\
+\midrule
+log-softmax$_{10}$ & \textsf{Ours} & 15.51 & 6.910 & 4.159 & 351.2 & 46\\
+ & \textsf{Poly} & 53.87 (3.5$\times$) & 23.88 (3.5$\times$) & 14.30 (3.4$\times$) & 1224 (3.5$\times$) & 160\\
+ & \textsf{Naive} & 111.0 (7.2$\times$) & 49.19 (7.1$\times$) & 29.36 (7.1$\times$) & 2510 (7.1$\times$) & 329\\
+ & \textsf{Plain} & \multicolumn{3}{c}{6.12 ms} & -- & --\\
+\bottomrule
+\end{tabular}
+\end{table*}

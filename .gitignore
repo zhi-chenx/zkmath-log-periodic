@@ -1,0 +1,17 @@
+# Python
+__pycache__/
+*.py[oc]
+.venv/
+
+# C++ build tree (created by zkmath-ext/build.sh) and raw benchmark logs
+zkmath-ext/build/
+zkmath-ext/results/raw/
+
+# LaTeX build artefacts (paper/main.pdf is kept)
+paper/*.aux
+paper/*.bbl
+paper/*.blg
+paper/*.fdb_latexmk
+paper/*.fls
+paper/*.log
+paper/*.out
